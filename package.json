@@ -1,0 +1,37 @@
+{
+  "name": "anthropic-models-manager",
+  "version": "1.0.0",
+  "description": "Centralized model management and A/B testing dashboard for BrassHelm AI integrations",
+  "main": "api/index.ts",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "tsc",
+    "deploy": "vercel --prod",
+    "seed": "node scripts/seed-models.js",
+    "test": "echo \"Tests coming soon\" && exit 0"
+  },
+  "keywords": [
+    "anthropic",
+    "claude",
+    "model-management",
+    "ab-testing",
+    "ai",
+    "brasshelm"
+  ],
+  "author": "Cameron O'Brien <cameron@brasshelm.com>",
+  "license": "PRIVATE",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "@neondatabase/serverless": "^0.9.5",
+    "jose": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.7",
+    "@vercel/node": "^3.2.21",
+    "typescript": "^5.6.3",
+    "vercel": "^37.7.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
