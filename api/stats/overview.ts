@@ -11,6 +11,10 @@
 import { getDB } from '../db/client';
 import { getCorsHeaders } from '../utils/cors';
 
+export const config = {
+  runtime: 'edge',
+};
+
 export default async function handler(req: Request): Promise<Response> {
   const corsHeaders = getCorsHeaders(req);
 
