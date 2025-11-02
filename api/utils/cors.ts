@@ -1,14 +1,10 @@
 /**
- * CORS Utility - BIBLE Compliant
+ * CORS Utility - Edge Functions Pattern
  * Dynamic CORS headers for *.brasshelm.com subdomains
- *
- * BIBLE COMPLIANCE: Matches pattern from me.ts
  */
 
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 /**
- * List all allowed BrassHelm subdomains (BIBLE pattern)
+ * List all allowed BrassHelm subdomains
  */
 const ALLOWED_ORIGINS = [
   'https://admin.brasshelm.com',
@@ -16,7 +12,8 @@ const ALLOWED_ORIGINS = [
   'https://kanban.brasshelm.com',
   'https://forms.brasshelm.com',
   'https://tracker.brasshelm.com',
-  'https://monitor.brasshelm.com'
+  'https://monitor.brasshelm.com',
+  'https://models.brasshelm.com'
 ];
 
 /**
@@ -25,7 +22,7 @@ const ALLOWED_ORIGINS = [
 export function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
 
-  // Check explicit list first (BIBLE pattern)
+  // Check explicit list first
   if (ALLOWED_ORIGINS.includes(origin)) {
     return true;
   }
@@ -44,36 +41,34 @@ export function isAllowedOrigin(origin: string | undefined): boolean {
 }
 
 /**
- * Set CORS headers dynamically based on request origin (BIBLE pattern)
+ * Get CORS headers for response
  */
-export function setCorsHeaders(
-  req: VercelRequest,
-  res: VercelResponse
-): void {
-  const origin = req.headers.origin;
+export function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin');
 
   // Allow origin if it's in our list or matches *.brasshelm.com
   const corsOrigin = (origin && isAllowedOrigin(origin))
     ? origin
-    : 'https://ai.brasshelm.com';  // Default fallback
+    : 'https://models.brasshelm.com';  // Default fallback
 
-  res.setHeader('Access-Control-Allow-Origin', corsOrigin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie');
+  return {
+    'Access-Control-Allow-Origin': corsOrigin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key'
+  };
 }
 
 /**
- * Handle OPTIONS preflight request
+ * Handle CORS preflight (OPTIONS) request
+ * Returns Response if it's a preflight, null otherwise
  */
-export function handleCorsPreflight(
-  req: VercelRequest,
-  res: VercelResponse
-): boolean {
+export function handleCors(req: Request): Response | null {
   if (req.method === 'OPTIONS') {
-    setCorsHeaders(req, res);
-    res.status(204).end();
-    return true;
+    return new Response(null, {
+      status: 204,
+      headers: getCorsHeaders(req)
+    });
   }
-  return false;
+  return null;
 }

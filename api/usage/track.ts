@@ -46,7 +46,7 @@ export default async function handler(req: Request) {
     }
 
     // Parse request body
-    const body = await req.json();
+    const body: any = await req.json();
     const {
       projectName,
       endpoint,
@@ -58,6 +58,17 @@ export default async function handler(req: Request) {
       error,
       testId,
       testVariant
+    }: {
+      projectName: string;
+      endpoint?: string;
+      modelId: string;
+      inputTokens: number;
+      outputTokens: number;
+      responseTimeMs?: number;
+      success: boolean;
+      error?: string;
+      testId?: number;
+      testVariant?: string;
     } = body;
 
     // Validate required fields
