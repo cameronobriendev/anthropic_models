@@ -459,81 +459,64 @@
     // Load overview data
     async function loadOverview() {
       try {
-        // For now, show placeholder data
-        // In Phase 5, we'll add actual API endpoints for dashboard data
+        // Fetch real overview stats
+        const overviewRes = await fetch('/api/stats/overview');
+        const overview = await overviewRes.json();
 
+        // Fetch current models
+        const modelsRes = await fetch('/api/stats/models');
+        const modelsData = await modelsRes.json();
+
+        // Build stats grid
         const statsHTML = `
           <div class="stat-card">
             <div class="stat-label">Total API Calls</div>
-            <div class="stat-value">12,847</div>
-            <div class="stat-change positive">+18% this week</div>
+            <div class="stat-value">${overview.totalCalls.toLocaleString()}</div>
+            <div class="stat-change ${overview.callsChangePositive ? 'positive' : 'negative'}">
+              ${overview.callsChangePositive ? '+' : ''}${overview.callsChangePercent}% this week
+            </div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Total Cost (USD)</div>
-            <div class="stat-value">$284.32</div>
-            <div class="stat-change positive">-5% vs last week</div>
+            <div class="stat-value">$${parseFloat(overview.totalCost).toLocaleString()}</div>
+            <div class="stat-change ${overview.costChangePositive ? 'positive' : 'negative'}">
+              ${overview.costChangePositive ? '' : '+'}${Math.abs(overview.costChangePercent)}% vs last week
+            </div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Active Models</div>
-            <div class="stat-value">3</div>
-            <div class="stat-change">All systems operational</div>
+            <div class="stat-value">${overview.activeModels}</div>
+            <div class="stat-change">${overview.failingModels > 0 ? `⚠️ ${overview.failingModels} failing` : 'All systems operational'}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Avg Response Time</div>
-            <div class="stat-value">1.2s</div>
-            <div class="stat-change positive">-200ms improvement</div>
+            <div class="stat-value">${overview.avgResponseTime}s</div>
+            <div class="stat-change">Based on ${overview.weekCalls.toLocaleString()} calls</div>
           </div>
         `;
 
         document.getElementById('overview-stats').innerHTML = statsHTML;
 
-        // Load current models
-        const modelsHTML = `
+        // Build current models list (only current & working)
+        const currentModels = modelsData.models.filter(m => m.isCurrent && m.isWorking);
+        const modelsHTML = currentModels.map(model => `
           <div class="model-card">
             <div class="model-info">
-              <h3>Claude Sonnet 4.5</h3>
+              <h3>${formatModelName(model.modelType)}</h3>
               <div class="model-meta">
-                <span class="model-badge current">Current</span>
-                <span class="model-badge working">Working</span>
-                <span>$3.00 / $15.00 per M tokens</span>
+                ${model.isCurrent ? '<span class="model-badge current">Current</span>' : ''}
+                ${model.isWorking ? '<span class="model-badge working">Working</span>' : ''}
+                <span>$${model.pricing.inputPerMillion} / $${model.pricing.outputPerMillion} per M tokens</span>
               </div>
             </div>
             <div class="model-stats">
-              <div class="model-stat-value">8,234</div>
+              <div class="model-stat-value">${parseInt(model.usage.totalCalls).toLocaleString()}</div>
               <div class="model-stat-label">API Calls</div>
             </div>
           </div>
-          <div class="model-card">
-            <div class="model-info">
-              <h3>Claude Haiku 4.5</h3>
-              <div class="model-meta">
-                <span class="model-badge current">Current</span>
-                <span class="model-badge working">Working</span>
-                <span>$0.80 / $4.00 per M tokens</span>
-              </div>
-            </div>
-            <div class="model-stats">
-              <div class="model-stat-value">3,892</div>
-              <div class="model-stat-label">API Calls</div>
-            </div>
-          </div>
-          <div class="model-card">
-            <div class="model-info">
-              <h3>Claude Opus 4.1</h3>
-              <div class="model-meta">
-                <span class="model-badge current">Current</span>
-                <span class="model-badge working">Working</span>
-                <span>$15.00 / $75.00 per M tokens</span>
-              </div>
-            </div>
-            <div class="model-stats">
-              <div class="model-stat-value">721</div>
-              <div class="model-stat-label">API Calls</div>
-            </div>
-          </div>
-        `;
+        `).join('');
 
-        document.getElementById('current-models').innerHTML = modelsHTML;
+        document.getElementById('current-models').innerHTML = modelsHTML || '<p style="opacity: 0.8;">No active models found. Run a sync to populate.</p>';
 
       } catch (error) {
         console.error('Error loading overview:', error);
@@ -546,188 +529,155 @@
       }
     }
 
+    // Helper function to format model names
+    function formatModelName(modelType) {
+      const names = {
+        'sonnet': 'Claude Sonnet 4.5',
+        'haiku': 'Claude Haiku 4.5',
+        'opus': 'Claude Opus 4.1'
+      };
+      return names[modelType] || modelType;
+    }
+
     // Load all models
-    function loadAllModels() {
-      // Same as current models for now
-      const html = `
+    async function loadAllModels() {
+      try {
+        const res = await fetch('/api/stats/models');
+        const data = await res.json();
+
+        const html = `
         <p style="opacity: 0.8; margin-bottom: 20px;">
           Complete list of all Anthropic models in the system
         </p>
-        <div class="model-card">
-          <div class="model-info">
-            <h3>Claude Sonnet 4.5</h3>
-            <div class="model-meta">
-              <span class="model-badge current">Current</span>
-              <span class="model-badge working">Working</span>
-              <span>claude-sonnet-4-5-20250929</span>
+        ${data.models.map(model => `
+          <div class="model-card">
+            <div class="model-info">
+              <h3>${formatModelName(model.modelType)}</h3>
+              <div class="model-meta">
+                ${model.isCurrent ? '<span class="model-badge current">Current</span>' : ''}
+                ${model.isWorking ? '<span class="model-badge working">Working</span>' : '<span class="model-badge deprecated">Not Working</span>'}
+                ${model.isDeprecated ? '<span class="model-badge deprecated">Deprecated</span>' : ''}
+                <span>${model.modelId}</span>
+              </div>
+              <p style="margin-top: 10px; opacity: 0.9;">
+                Input: $${model.pricing.inputPerMillion} / M tokens • Output: $${model.pricing.outputPerMillion} / M tokens
+              </p>
             </div>
-            <p style="margin-top: 10px; opacity: 0.9;">
-              Input: $3.00 / M tokens • Output: $15.00 / M tokens
-            </p>
-          </div>
-          <div class="model-stats">
-            <div class="model-stat-value">8,234</div>
-            <div class="model-stat-label">Total Calls</div>
-            <div style="margin-top: 10px;">
-              <div class="model-stat-value" style="font-size: 1.2rem;">$156.78</div>
-              <div class="model-stat-label">Total Cost</div>
-            </div>
-          </div>
-        </div>
-        <div class="model-card">
-          <div class="model-info">
-            <h3>Claude Haiku 4.5</h3>
-            <div class="model-meta">
-              <span class="model-badge current">Current</span>
-              <span class="model-badge working">Working</span>
-              <span>claude-haiku-4-5-20251001</span>
-            </div>
-            <p style="margin-top: 10px; opacity: 0.9;">
-              Input: $0.80 / M tokens • Output: $4.00 / M tokens
-            </p>
-          </div>
-          <div class="model-stats">
-            <div class="model-stat-value">3,892</div>
-            <div class="model-stat-label">Total Calls</div>
-            <div style="margin-top: 10px;">
-              <div class="model-stat-value" style="font-size: 1.2rem;">$89.44</div>
-              <div class="model-stat-label">Total Cost</div>
+            <div class="model-stats">
+              <div class="model-stat-value">${parseInt(model.usage.totalCalls).toLocaleString()}</div>
+              <div class="model-stat-label">Total Calls</div>
+              <div style="margin-top: 10px;">
+                <div class="model-stat-value" style="font-size: 1.2rem;">$${parseFloat(model.usage.totalCost).toLocaleString()}</div>
+                <div class="model-stat-label">Total Cost</div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="model-card">
-          <div class="model-info">
-            <h3>Claude Opus 4.1</h3>
-            <div class="model-meta">
-              <span class="model-badge current">Current</span>
-              <span class="model-badge working">Working</span>
-              <span>claude-opus-4-1-20250805</span>
-            </div>
-            <p style="margin-top: 10px; opacity: 0.9;">
-              Input: $15.00 / M tokens • Output: $75.00 / M tokens
-            </p>
-          </div>
-          <div class="model-stats">
-            <div class="model-stat-value">721</div>
-            <div class="model-stat-label">Total Calls</div>
-            <div style="margin-top: 10px;">
-              <div class="model-stat-value" style="font-size: 1.2rem;">$38.10</div>
-              <div class="model-stat-label">Total Cost</div>
-            </div>
-          </div>
-        </div>
-        <div class="model-card">
-          <div class="model-info">
-            <h3>Claude Haiku 3.5 (Legacy)</h3>
-            <div class="model-meta">
-              <span class="model-badge deprecated">Deprecated</span>
-              <span>claude-3-5-haiku-20241022</span>
-            </div>
-            <p style="margin-top: 10px; opacity: 0.9;">
-              Fallback model • Not recommended for new projects
-            </p>
-          </div>
-          <div class="model-stats">
-            <div class="model-stat-value">0</div>
-            <div class="model-stat-label">Total Calls</div>
-          </div>
-        </div>
+        `).join('')}
       `;
 
       document.getElementById('all-models').innerHTML = html;
+    } catch (error) {
+      console.error('Error loading models:', error);
+      document.getElementById('all-models').innerHTML = `
+        <div class="error">
+          <strong>Error loading models</strong><br>
+          ${error.message}
+        </div>
+      `;
     }
+  }
 
     // Load usage statistics
-    function loadUsageStats() {
-      const html = `
-        <table class="usage-table">
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th>Model</th>
-              <th>API Calls</th>
-              <th>Input Tokens</th>
-              <th>Output Tokens</th>
-              <th>Cost (USD)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Brassy AI</strong></td>
-              <td>Sonnet 4.5</td>
-              <td>4,521</td>
-              <td>2.4M</td>
-              <td>1.8M</td>
-              <td>$34.20</td>
-            </tr>
-            <tr>
-              <td><strong>Tracker</strong></td>
-              <td>Haiku 4.5</td>
-              <td>2,145</td>
-              <td>890K</td>
-              <td>456K</td>
-              <td>$2.54</td>
-            </tr>
-            <tr>
-              <td><strong>Forms</strong></td>
-              <td>Sonnet 4.5</td>
-              <td>3,713</td>
-              <td>1.9M</td>
-              <td>1.2M</td>
-              <td>$23.70</td>
-            </tr>
-            <tr>
-              <td><strong>Dashboard</strong></td>
-              <td>Haiku 4.5</td>
-              <td>1,747</td>
-              <td>623K</td>
-              <td>289K</td>
-              <td>$1.65</td>
-            </tr>
-            <tr>
-              <td><strong>Kanban</strong></td>
-              <td>Opus 4.1</td>
-              <td>721</td>
-              <td>1.2M</td>
-              <td>890K</td>
-              <td>$84.75</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="margin-top: 20px; opacity: 0.8; text-align: center;">
-          Last updated: Just now • Data refreshes hourly
-        </p>
-      `;
+    async function loadUsageStats() {
+      try {
+        const res = await fetch('/api/stats/usage?period=7d');
+        const data = await res.json();
 
-      document.getElementById('usage-stats').innerHTML = html;
+        const html = `
+          <table class="usage-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Model</th>
+                <th>API Calls</th>
+                <th>Input Tokens</th>
+                <th>Output Tokens</th>
+                <th>Cost (USD)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.detailed.map(row => `
+                <tr>
+                  <td><strong>${row.project}</strong></td>
+                  <td>${row.model.split('-')[1] || 'unknown'}</td>
+                  <td>${parseInt(row.calls).toLocaleString()}</td>
+                  <td>${(parseInt(row.inputTokens) / 1000).toFixed(1)}K</td>
+                  <td>${(parseInt(row.outputTokens) / 1000).toFixed(1)}K</td>
+                  <td>$${parseFloat(row.cost).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <p style="margin-top: 20px; opacity: 0.8; text-align: center;">
+            Last 7 days • Last updated: ${new Date().toLocaleTimeString()} • Data refreshes every 30s
+          </p>
+        `;
+
+        document.getElementById('usage-stats').innerHTML = html || '<p style="opacity: 0.8; text-align: center;">No usage data found. Start using the API to see stats here.</p>';
+      } catch (error) {
+        console.error('Error loading usage stats:', error);
+        document.getElementById('usage-stats').innerHTML = `
+          <div class="error">
+            <strong>Error loading usage data</strong><br>
+            ${error.message}
+          </div>
+        `;
+      }
     }
 
     // Load cost analysis
-    function loadCostAnalysis() {
-      const html = `
-        <div class="stat-card">
-          <div class="stat-label">This Month</div>
-          <div class="stat-value">$284.32</div>
-          <div class="stat-change positive">-12% vs last month</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">This Week</div>
-          <div class="stat-value">$67.84</div>
-          <div class="stat-change positive">On track for budget</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Today</div>
-          <div class="stat-value">$9.45</div>
-          <div class="stat-change positive">-3% vs yesterday</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Projected Monthly</div>
-          <div class="stat-value">$320.50</div>
-          <div class="stat-change">Based on current usage</div>
-        </div>
-      `;
+    async function loadCostAnalysis() {
+      try {
+        const res = await fetch('/api/stats/costs');
+        const data = await res.json();
 
-      document.getElementById('cost-stats').innerHTML = html;
+        const html = `
+          <div class="stat-card">
+            <div class="stat-label">This Month</div>
+            <div class="stat-value">$${parseFloat(data.month.cost).toLocaleString()}</div>
+            <div class="stat-change ${data.month.positive ? 'positive' : 'negative'}">
+              ${data.month.positive ? '' : '+'}${Math.abs(data.month.change)}% vs last month
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">This Week</div>
+            <div class="stat-value">$${parseFloat(data.week.cost).toLocaleString()}</div>
+            <div class="stat-change positive">Rolling 7 days</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Today</div>
+            <div class="stat-value">$${parseFloat(data.today.cost).toLocaleString()}</div>
+            <div class="stat-change ${data.today.positive ? 'positive' : 'negative'}">
+              ${data.today.positive ? '' : '+'}${Math.abs(data.today.change)}% vs yesterday
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Projected Monthly</div>
+            <div class="stat-value">$${parseFloat(data.projected.monthly).toLocaleString()}</div>
+            <div class="stat-change">${data.projected.daysRemaining} days remaining</div>
+          </div>
+        `;
+
+        document.getElementById('cost-stats').innerHTML = html;
+      } catch (error) {
+        console.error('Error loading cost analysis:', error);
+        document.getElementById('cost-stats').innerHTML = `
+          <div class="error">
+            <strong>Error loading cost data</strong><br>
+            ${error.message}
+          </div>
+        `;
+      }
     }
 
     // Initialize on page load
