@@ -16,6 +16,10 @@
 import { getDB } from '../db/client';
 import { handleCors } from '../utils/cors';
 
+export const config = {
+  runtime: 'edge',
+};
+
 export default async function handler(req: Request) {
   // Handle CORS
   const corsResponse = handleCors(req);
