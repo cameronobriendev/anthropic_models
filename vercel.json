@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "npm run build",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/:path((?!api/).*)", "destination": "/" }
   ],
   "headers": [
     {
