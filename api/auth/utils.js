@@ -1,30 +1,69 @@
 /**
- * utils.ts - BrassHelm Security Package Template (BIBLE)
- *
- * Converted from /Users/camobrien/Documents/GitHub/security/auth-templates/utils.js
+ * utils.js - BrassHelm Security Package Template
  *
  * PURPOSE:
  * Core authentication utilities for JWT operations, password hashing,
  * and permission checking.
  *
- * BIBLE COMPLIANCE: EXACT COPY + Brassy-specific extensions at end
+ * FUNCTIONS:
+ * - createSession(user) - Generate JWT token from user data
+ * - verifySession(token) - Verify JWT signature and decode payload
+ * - isAuthenticated(req) - Check if request has valid session
+ * - hashPassword(password) - Hash password with PBKDF2
+ * - verifyPassword(password, hash) - Verify password against hash
+ * - isAdmin(user) - Check if user is admin or superuser
+ * - isStaffOrAdmin(user) - Check if user is staff, admin, or superuser
+ * - canManageUsers(user) - Check if user can manage other users
+ * - isSuperuser(user) - Check if user is exclusively superuser
+ * - getUserByUsername(username) - Fetch user from database
+ *
+ * REQUIRED ENV VARS:
+ * - SESSION_SECRET: MUST match dashboard (for JWT signing/verification)
+ * - DATABASE_URL: For database queries (MUST be pooled connection)
+ *
+ * SECURITY FEATURES:
+ * - JWT signed with HMAC-SHA256
+ * - Password hashing with PBKDF2 (100,000 iterations)
+ * - Unique salt per password
+ * - Constant-time password comparison
+ * - Force logout on permission changes
+ *
+ * USAGE:
+ * 1. Copy this file to /api/auth/utils.js in your project
+ * 2. Ensure SESSION_SECRET matches dashboard exactly
+ * 3. Install dependencies: npm install jose @neondatabase/serverless
+ * 4. Deploy
+ *
+ * DOCUMENTATION:
+ * See /security/AUTH_ARCHITECTURE.md for complete implementation guide
+ *
+ * LAST UPDATED: November 1, 2025
  */
 
 import { SignJWT, jwtVerify } from 'jose';
-import type { VercelRequest } from '@vercel/node';
-import { getDB } from '../db/client';
+import { getDB } from '../db/client.js';
 
 /**
  * JWT SECRET CONFIGURATION
  *
  * CRITICAL: This secret MUST match across all BrassHelm services
  *
- * VALIDATION: Fails loudly if SESSION_SECRET is missing or misconfigured.
- * This prevents silent auth failures and makes debugging much easier.
+ * Why it matters:
+ * - Token signed on admin.brasshelm.com with secret A
+ * - Token verified on tracker.brasshelm.com with secret B
+ * - If A ≠ B, verification fails = "Token verification failed"
+ *
+ * How to ensure it matches:
+ * 1. Get value from dashboard Vercel settings
+ * 2. Add exact same value to new project: vercel env add SESSION_SECRET
+ * 3. Never generate a new secret for new services
+ *
+ * VALIDATION: Fails loudly if SESSION_SECRET is not properly configured
  */
 const SECRET = (() => {
   const secret = process.env.SESSION_SECRET;
 
+  // Check if SESSION_SECRET is set
   if (!secret) {
     throw new Error(
       '🔴 CRITICAL: SESSION_SECRET environment variable not set!\n' +
@@ -33,7 +72,7 @@ const SECRET = (() => {
       '1. Get SESSION_SECRET from dashboard project:\n' +
       '   Visit: https://vercel.com/brasshelm/dashboard/settings/environment-variables\n' +
       '2. Add to this project:\n' +
-      '   Visit: https://vercel.com/brasshelm/ai/settings/environment-variables\n' +
+      '   vercel env add SESSION_SECRET production\n' +
       '3. Paste EXACT SAME value from dashboard\n' +
       '\n' +
       'IMPORTANT: All BrassHelm subdomains MUST use the SAME SESSION_SECRET\n' +
@@ -41,6 +80,7 @@ const SECRET = (() => {
     );
   }
 
+  // Check if using dangerous fallback value
   if (secret === 'fallback-secret-change-me') {
     throw new Error(
       '🔴 CRITICAL: SESSION_SECRET is using fallback value!\n' +
@@ -50,6 +90,7 @@ const SECRET = (() => {
     );
   }
 
+  // Warn if secret is too short (not blocking, just warning)
   if (secret.length < 32) {
     console.warn(
       '⚠️  WARNING: SESSION_SECRET is too short (' + secret.length + ' characters).\n' +
@@ -61,24 +102,39 @@ const SECRET = (() => {
   return new TextEncoder().encode(secret);
 })();
 
-// ========================================
-// BIBLE FUNCTIONS (DO NOT MODIFY)
-// ========================================
-
 /**
  * CREATE SESSION - Generate JWT Token
  *
  * Takes user object from database and creates signed JWT token.
  * Token is valid for 30 days.
+ *
+ * @param {Object} user - User object from database
+ * @param {string} user.username - Username
+ * @param {string} user.role - User role (admin, superuser, staff, client)
+ * @param {string} user.client_id - Client identifier
+ * @param {boolean} user.can_edit_leads - Permission flag
+ * @param {boolean} user.can_change_status - Permission flag
+ * @returns {Promise<string>} JWT token
+ *
+ * Example:
+ * ```javascript
+ * const token = await createSession({
+ *   username: 'cameron',
+ *   role: 'admin',
+ *   client_id: 'brasshelm',
+ *   can_edit_leads: true,
+ *   can_change_status: true
+ * });
+ * // Returns: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ * ```
  */
-export async function createSession(user: any): Promise<string> {
+export async function createSession(user) {
   const token = await new SignJWT({
     username: user.username,
     role: user.role,
     client_id: user.client_id,
     can_edit_leads: user.can_edit_leads,
-    can_change_status: user.can_change_status,
-    user_id: user.id // Add user_id for Brassy
+    can_change_status: user.can_change_status
   })
     .setProtectedHeader({ alg: 'HS256' })  // HMAC SHA-256
     .setIssuedAt()                          // Current timestamp
@@ -93,8 +149,21 @@ export async function createSession(user: any): Promise<string> {
  *
  * Verifies JWT signature and decodes payload.
  * Returns null if token is invalid or expired.
+ *
+ * @param {string} token - JWT token from cookie
+ * @returns {Promise<Object|null>} User payload or null if invalid
+ *
+ * Example:
+ * ```javascript
+ * const payload = await verifySession('eyJhbGc...');
+ * if (payload) {
+ *   console.log('Valid token for:', payload.username);
+ * } else {
+ *   console.log('Invalid or expired token');
+ * }
+ * ```
  */
-export async function verifySession(token: string): Promise<any | null> {
+export async function verifySession(token) {
   try {
     const { payload } = await jwtVerify(token, SECRET);
     return payload;
@@ -111,10 +180,27 @@ export async function verifySession(token: string): Promise<any | null> {
  * 1. Extract session cookie from request
  * 2. Verify JWT signature
  * 3. Check database for force logout (permissions_updated_at)
+ *
+ * Force Logout Feature:
+ * - If admin changes user permissions, set permissions_updated_at = NOW()
+ * - If JWT issued before permissions_updated_at, reject token
+ * - Forces user to logout and login again with new permissions
+ *
+ * @param {Request} req - Fetch API Request object
+ * @returns {Promise<Object|null>} User payload or null if not authenticated
+ *
+ * Example:
+ * ```javascript
+ * const user = await isAuthenticated(req);
+ * if (!user) {
+ *   return new Response('Unauthorized', { status: 401 });
+ * }
+ * console.log('Authenticated as:', user.username, user.role);
+ * ```
  */
-export async function isAuthenticated(req: VercelRequest): Promise<any | null> {
+export async function isAuthenticated(req) {
   // Extract cookies from request headers
-  const cookies = req.headers.cookie || '';
+  const cookies = req.headers.get('cookie') || '';
 
   // Find session cookie (format: "session=TOKEN; other=value")
   const match = cookies.match(/session=([^;]+)/);
@@ -134,6 +220,9 @@ export async function isAuthenticated(req: VercelRequest): Promise<any | null> {
    * Scenario: Admin demotes user from "admin" to "client"
    * Problem: User still has JWT with role="admin" for 30 days
    * Solution: Set permissions_updated_at = NOW() when changing permissions
+   *
+   * This query checks if permissions were changed after JWT was issued.
+   * If yes, reject token (user must logout and login again).
    */
   const sql = getDB();
   const result = await sql`
@@ -147,7 +236,7 @@ export async function isAuthenticated(req: VercelRequest): Promise<any | null> {
   // Check if permissions changed after login
   const permissionsUpdatedAt = result[0].permissions_updated_at;
   if (permissionsUpdatedAt) {
-    const jwtIssuedAt = new Date((payload.iat as number) * 1000);  // Convert Unix timestamp
+    const jwtIssuedAt = new Date(payload.iat * 1000);  // Convert Unix timestamp
     const permissionsUpdated = new Date(permissionsUpdatedAt);
 
     if (jwtIssuedAt < permissionsUpdated) {
@@ -165,9 +254,24 @@ export async function isAuthenticated(req: VercelRequest): Promise<any | null> {
  * Hashes password with PBKDF2 (100,000 iterations) and random salt.
  * Uses Web Crypto API (compatible with Vercel Edge Runtime).
  *
+ * Why PBKDF2:
+ * - bcrypt not available in Edge Runtime
+ * - PBKDF2 is OWASP-approved for password hashing
+ * - 100,000 iterations makes brute force expensive
+ *
  * Storage Format: "salt:hash" (colon-separated hex strings)
+ *
+ * @param {string} password - Plain text password
+ * @returns {Promise<string>} Formatted hash "salt:hash"
+ *
+ * Example:
+ * ```javascript
+ * const hash = await hashPassword('mypassword123');
+ * // Returns: "a1b2c3d4e5f6:9876543210abcdef..."
+ * // Store this in database
+ * ```
  */
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password) {
   const encoder = new TextEncoder();
 
   // Generate random 16-byte salt (unique per password)
@@ -209,8 +313,21 @@ export async function hashPassword(password: string): Promise<string> {
  *
  * Verifies password against stored hash using PBKDF2.
  * Uses constant-time comparison to prevent timing attacks.
+ *
+ * @param {string} password - Plain text password from login
+ * @param {string} storedHash - Hash from database "salt:hash"
+ * @returns {Promise<boolean>} True if password matches
+ *
+ * Example:
+ * ```javascript
+ * const user = await getUserByUsername('cameron');
+ * const isValid = await verifyPassword('userpassword', user.password_hash);
+ * if (isValid) {
+ *   console.log('Password correct');
+ * }
+ * ```
  */
-export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+export async function verifyPassword(password, storedHash) {
   const encoder = new TextEncoder();
 
   // Split stored hash into salt and hash components
@@ -220,7 +337,7 @@ export async function verifyPassword(password: string, storedHash: string): Prom
 
   // Convert hex salt back to Uint8Array
   const salt = new Uint8Array(
-    (saltHex.match(/.{1,2}/g) || []).map(byte => parseInt(byte, 16))
+    saltHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
   );
 
   // Import password as cryptographic key material
@@ -257,8 +374,18 @@ export async function verifyPassword(password: string, storedHash: string): Prom
  *
  * Returns true if user is admin OR superuser.
  * Superuser inherits all admin permissions.
+ *
+ * @param {Object} user - User payload from JWT
+ * @returns {boolean} True if admin or superuser
+ *
+ * Example:
+ * ```javascript
+ * if (!isAdmin(user)) {
+ *   return new Response('Forbidden - admin only', { status: 403 });
+ * }
+ * ```
  */
-export function isAdmin(user: any): boolean {
+export function isAdmin(user) {
   return user && (user.role === 'admin' || user.role === 'superuser');
 }
 
@@ -266,8 +393,18 @@ export function isAdmin(user: any): boolean {
  * IS STAFF OR ADMIN - Check Staff/Admin/Superuser Role
  *
  * Returns true if user is staff, admin, OR superuser.
+ *
+ * @param {Object} user - User payload from JWT
+ * @returns {boolean} True if staff, admin, or superuser
+ *
+ * Example:
+ * ```javascript
+ * if (!isStaffOrAdmin(user)) {
+ *   return new Response('Forbidden - staff or admin only', { status: 403 });
+ * }
+ * ```
  */
-export function isStaffOrAdmin(user: any): boolean {
+export function isStaffOrAdmin(user) {
   return user && (user.role === 'admin' || user.role === 'superuser' || user.role === 'staff');
 }
 
@@ -275,8 +412,20 @@ export function isStaffOrAdmin(user: any): boolean {
  * CAN MANAGE USERS - Check User Management Permissions
  *
  * Returns true if user can create/edit/delete other users.
+ * Currently same as isStaffOrAdmin(), but separate function
+ * for future granular permissions.
+ *
+ * @param {Object} user - User payload from JWT
+ * @returns {boolean} True if can manage users
+ *
+ * Example:
+ * ```javascript
+ * if (!canManageUsers(user)) {
+ *   return new Response('Forbidden - cannot manage users', { status: 403 });
+ * }
+ * ```
  */
-export function canManageUsers(user: any): boolean {
+export function canManageUsers(user) {
   return user && (user.role === 'admin' || user.role === 'superuser' || user.role === 'staff');
 }
 
@@ -284,8 +433,19 @@ export function canManageUsers(user: any): boolean {
  * IS SUPERUSER - Check Exclusive Superuser Role
  *
  * Returns true ONLY if user is superuser (not admin or staff).
+ * Use this for superuser-only features (system monitoring, etc).
+ *
+ * @param {Object} user - User payload from JWT
+ * @returns {boolean} True if exclusively superuser
+ *
+ * Example:
+ * ```javascript
+ * if (!isSuperuser(user)) {
+ *   return new Response('Forbidden - superuser only', { status: 403 });
+ * }
+ * ```
  */
-export function isSuperuser(user: any): boolean {
+export function isSuperuser(user) {
   return user && user.role === 'superuser';
 }
 
@@ -294,61 +454,23 @@ export function isSuperuser(user: any): boolean {
  *
  * Fetches complete user record from database by username.
  * Returns null if user not found.
+ *
+ * @param {string} username - Username to lookup
+ * @returns {Promise<Object|null>} User object or null
+ *
+ * Example:
+ * ```javascript
+ * const user = await getUserByUsername('cameron');
+ * if (user) {
+ *   console.log('Found user:', user.username, user.role);
+ * }
+ * ```
  */
-export async function getUserByUsername(username: string): Promise<any | null> {
+export async function getUserByUsername(username) {
   const sql = getDB();
   const result = await sql`
     SELECT * FROM admin_users
     WHERE username = ${username}
   `;
   return result[0] || null;
-}
-
-// ========================================
-// BRASSY-SPECIFIC EXTENSIONS (ADD BELOW)
-// ========================================
-
-/**
- * CHECK BRASSY ACCESS
- *
- * Brassy-specific: Checks if user has access in brassy_user_access table
- */
-export async function checkBrassyAccess(userId: number): Promise<boolean> {
-  const sql = getDB();
-
-  try {
-    const result = await sql`
-      SELECT access_enabled
-      FROM brassy_user_access
-      WHERE user_id = ${userId}
-    `;
-
-    if (result.length === 0) {
-      // User not in access table - deny access
-      return false;
-    }
-
-    return result[0].access_enabled === true;
-  } catch (error) {
-    console.error('[Brassy] Access check failed:', error);
-    return false;
-  }
-}
-
-/**
- * IS AUTHENTICATED WITH BRASSY ACCESS
- *
- * Enhanced isAuthenticated with Brassy access check
- * Wraps BIBLE isAuthenticated() with Brassy-specific access validation
- */
-export async function isAuthenticatedWithBrassyAccess(req: VercelRequest): Promise<any | null> {
-  // Step 1: BIBLE authentication
-  const user = await isAuthenticated(req);
-  if (!user) return null;
-
-  // Step 2: Brassy-specific access check
-  const hasAccess = await checkBrassyAccess(user.user_id || user.id);
-  if (!hasAccess) return null;
-
-  return user;
 }

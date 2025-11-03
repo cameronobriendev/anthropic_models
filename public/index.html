@@ -416,6 +416,23 @@
   </div>
 
   <script>
+    // Auth check - redirect to login if not authenticated
+    (async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (!data.authenticated) {
+          window.location.href = '/login.html';
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        window.location.href = '/login.html';
+      }
+    })();
+
     // Navigation
     function showSection(sectionId) {
       // Hide all sections
