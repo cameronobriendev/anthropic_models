@@ -8,7 +8,7 @@ A comprehensive dashboard for managing multiple Anthropic Claude models, running
 
 **[Try it now: anthropic.cameronobrien.dev](https://anthropic.cameronobrien.dev)**
 
-A simple demo page showcasing the core value: centralized Claude model configuration. Instead of hardcoding model versions in 10+ production apps, this API provides a single source of truth. Update the model once, deploy everywhere.
+Fully automated, hands-off Claude model management. A daily cron checks Anthropic's API for new models and automatically updates the database. All 10+ production apps make live API calls to fetch the current model—no manual updates, no redeployments needed. When Anthropic releases a new model, it's detected and deployed automatically.
 
 ## Tech Stack
 
@@ -20,12 +20,13 @@ A simple demo page showcasing the core value: centralized Claude model configura
 
 ## Features
 
-- **Model Management** - Configure and manage Claude model versions
+- **Fully Automated Model Detection** - Daily cron syncs with Anthropic API to detect new models
+- **Zero-Touch Updates** - New models are automatically marked as current, all apps instantly use them
+- **Live API Calls** - Production apps fetch current model on each request (no redeployment needed)
 - **A/B Testing** - Compare model performance across variants
-- **Usage Analytics** - Track API calls and costs
+- **Usage Analytics** - Track API calls and costs per project
 - **Performance Monitoring** - Response times and quality metrics
-- **Version Control** - Manage model version deployments
-- **Cost Optimization** - Monitor and optimize API usage
+- **Cost Optimization** - Monitor and optimize API usage across all apps
 
 ## Setup
 
