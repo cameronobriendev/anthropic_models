@@ -9,7 +9,6 @@
  * Logs: All sync results stored in sync_logs table
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { getDB } from '../db/client';
 
 export const config = {
@@ -84,9 +83,10 @@ export default async function handler(req: Request) {
     // 2. FETCH MODELS FROM ANTHROPIC API
     // ============================================
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('ANTHROPIC_API_KEY environment variable not set');
+    }
 
     console.log('🔄 Fetching models from Anthropic API...');
 
@@ -96,14 +96,37 @@ export default async function handler(req: Request) {
     let afterId: string | undefined;
 
     while (hasMore) {
-      const response: any = await anthropic.models.list({
-        limit: 100,
-        ...(afterId && { after_id: afterId }),
+      // Build query params
+      const params = new URLSearchParams({
+        limit: '100',
+      });
+      if (afterId) {
+        params.append('after_id', afterId);
+      }
+
+      // Direct HTTP call to Anthropic /v1/models
+      const response = await fetch(`https://api.anthropic.com/v1/models?${params}`, {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
       });
 
-      allModels.push(...response.data);
-      hasMore = response.has_more;
-      afterId = response.last_id;
+      if (!response.ok) {
+        throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json() as {
+        data: AnthropicModel[];
+        has_more: boolean;
+        last_id: string;
+      };
+
+      allModels.push(...data.data);
+      hasMore = data.has_more;
+      afterId = data.last_id;
     }
 
     console.log(`✅ Fetched ${allModels.length} models from Anthropic`);
@@ -173,122 +196,120 @@ export default async function handler(req: Request) {
     }
 
     // ============================================
-    // 6. UPDATE DATABASE (Transaction)
+    // 6. UPDATE DATABASE
     // ============================================
 
-    await sql.begin(async (tx) => {
-      // INSERT new models
-      for (const model of newModels) {
-        const modelType = parseModelType(model.id);
-        if (!modelType) {
-          console.warn(`⚠️ Could not parse type for model: ${model.id}`);
-          continue;
-        }
-
-        const pricing = getPricing(model.id);
-
-        await tx`
-          INSERT INTO anthropic_models (
-            model_id,
-            model_type,
-            display_name,
-            is_current,
-            is_working,
-            cost_per_million_input_tokens,
-            cost_per_million_output_tokens,
-            first_seen,
-            last_verified
-          ) VALUES (
-            ${model.id},
-            ${modelType},
-            ${model.display_name},
-            false,
-            true,
-            ${pricing.input},
-            ${pricing.output},
-            ${model.created_at},
-            NOW()
-          )
-        `;
-
-        modelsAdded++;
-        changes.push({
-          type: 'model_added',
-          model_id: model.id,
-          details: { display_name: model.display_name, model_type: modelType }
-        });
-
-        console.log(`➕ Added new model: ${model.id} (${modelType})`);
+    // INSERT new models
+    for (const model of newModels) {
+      const modelType = parseModelType(model.id);
+      if (!modelType) {
+        console.warn(`⚠️ Could not parse type for model: ${model.id}`);
+        continue;
       }
 
-      // MARK deprecated models
-      for (const model of deprecatedModels) {
-        await tx`
+      const pricing = getPricing(model.id);
+
+      await sql`
+        INSERT INTO anthropic_models (
+          model_id,
+          model_type,
+          display_name,
+          is_current,
+          is_working,
+          cost_per_million_input_tokens,
+          cost_per_million_output_tokens,
+          first_seen,
+          last_verified
+        ) VALUES (
+          ${model.id},
+          ${modelType},
+          ${model.display_name},
+          false,
+          true,
+          ${pricing.input},
+          ${pricing.output},
+          ${model.created_at},
+          NOW()
+        )
+      `;
+
+      modelsAdded++;
+      changes.push({
+        type: 'model_added',
+        model_id: model.id,
+        details: { display_name: model.display_name, model_type: modelType }
+      });
+
+      console.log(`➕ Added new model: ${model.id} (${modelType})`);
+    }
+
+    // MARK deprecated models
+    for (const model of deprecatedModels) {
+      await sql`
+        UPDATE anthropic_models
+        SET
+          is_deprecated = true,
+          deprecation_date = NOW(),
+          is_current = false
+        WHERE model_id = ${model.model_id}
+      `;
+
+      modelsDeprecated++;
+      changes.push({
+        type: 'model_deprecated',
+        model_id: model.model_id,
+      });
+
+      console.log(`🗑️ Deprecated model: ${model.model_id}`);
+    }
+
+    // UPDATE is_current flags (set newest model per type as current)
+    // First, get the newest model per type from API
+    const newestByType: Record<string, { id: string; created_at: string }> = {};
+
+    for (const model of allModels) {
+      const modelType = parseModelType(model.id);
+      if (!modelType) continue;
+
+      if (!newestByType[modelType] ||
+          new Date(model.created_at) > new Date(newestByType[modelType].created_at)) {
+        newestByType[modelType] = { id: model.id, created_at: model.created_at };
+      }
+    }
+
+    // Update is_current flags in database
+    for (const [modelType, newest] of Object.entries(newestByType)) {
+      // Check if this is different from current
+      const currentModel = dbModels.find(m => m.model_type === modelType && m.is_current);
+
+      if (!currentModel || currentModel.model_id !== newest.id) {
+        // Unset current flag on all models of this type
+        await sql`
           UPDATE anthropic_models
-          SET
-            is_deprecated = true,
-            deprecation_date = NOW(),
-            is_current = false
-          WHERE model_id = ${model.model_id}
+          SET is_current = false
+          WHERE model_type = ${modelType}
         `;
 
-        modelsDeprecated++;
+        // Set current flag on newest model
+        await sql`
+          UPDATE anthropic_models
+          SET is_current = true, last_verified = NOW()
+          WHERE model_id = ${newest.id}
+        `;
+
+        modelsUpdated++;
         changes.push({
-          type: 'model_deprecated',
-          model_id: model.model_id,
+          type: 'current_model_changed',
+          model_id: newest.id,
+          details: {
+            model_type: modelType,
+            previous: currentModel?.model_id || null
+          }
         });
 
-        console.log(`🗑️ Deprecated model: ${model.model_id}`);
+        console.log(`⭐ Set current model for ${modelType}: ${newest.id}`);
       }
-
-      // UPDATE is_current flags (set newest model per type as current)
-      // First, get the newest model per type from API
-      const newestByType: Record<string, { id: string; created_at: string }> = {};
-
-      for (const model of allModels) {
-        const modelType = parseModelType(model.id);
-        if (!modelType) continue;
-
-        if (!newestByType[modelType] ||
-            new Date(model.created_at) > new Date(newestByType[modelType].created_at)) {
-          newestByType[modelType] = { id: model.id, created_at: model.created_at };
-        }
-      }
-
-      // Update is_current flags in database
-      for (const [modelType, newest] of Object.entries(newestByType)) {
-        // Check if this is different from current
-        const currentModel = dbModels.find(m => m.model_type === modelType && m.is_current);
-
-        if (!currentModel || currentModel.model_id !== newest.id) {
-          // Unset current flag on all models of this type
-          await tx`
-            UPDATE anthropic_models
-            SET is_current = false
-            WHERE model_type = ${modelType}
-          `;
-
-          // Set current flag on newest model
-          await tx`
-            UPDATE anthropic_models
-            SET is_current = true, last_verified = NOW()
-            WHERE model_id = ${newest.id}
-          `;
-
-          modelsUpdated++;
-          changes.push({
-            type: 'current_model_changed',
-            model_id: newest.id,
-            details: {
-              model_type: modelType,
-              previous: currentModel?.model_id || null
-            }
-          });
-
-          console.log(`⭐ Set current model for ${modelType}: ${newest.id}`);
-        }
-      }
-    });
+    }
 
     // ============================================
     // 7. LOG RESULTS
