@@ -98,6 +98,8 @@ body {
   position: relative;
   overflow: hidden;
   user-select: none;
+  width: 420px;
+  max-width: 90vw;
 }
 
 .btn-primary {
@@ -239,43 +241,20 @@ body {
 }
 
 /* ============================================
-   RESULT DISPLAY
+   TIMESTAMP DISPLAY
    ============================================ */
-.result {
-  margin-top: 2rem;
-  animation: fadeIn 0.5s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.model-display {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  padding: 1.5rem;
+.timestamp {
+  margin-top: 1rem;
+  min-height: 1.5rem;
   text-align: center;
-}
-
-.model-name {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-  color: #ffffff;
-}
-
-.model-timestamp {
   font-size: 0.875rem;
   opacity: 0.8;
   color: rgba(255, 255, 255, 0.9);
+  transition: opacity 0.3s ease;
+}
+
+.timestamp:empty {
+  opacity: 0;
 }
 
 /* ============================================

@@ -4,9 +4,7 @@
 class ModelDemo {
   constructor() {
     this.button = document.getElementById('getModelBtn');
-    this.result = document.getElementById('result');
-    this.modelName = document.getElementById('modelName');
-    this.modelTimestamp = document.getElementById('modelTimestamp');
+    this.timestamp = document.getElementById('timestamp');
 
     this.init();
   }
@@ -125,14 +123,12 @@ class ModelDemo {
     this.button.classList.remove('loading');
     this.button.classList.add('revealed');
 
-    // Hide button text
+    // Update button text to show model
     const textSpan = this.button.querySelector('.btn-text');
-    textSpan.style.opacity = '0';
+    textSpan.textContent = data.model;
 
-    // Show result
-    this.modelName.textContent = data.model;
-    this.modelTimestamp.textContent = `Retrieved: ${new Date(data.timestamp).toLocaleString()}`;
-    this.result.style.display = 'block';
+    // Show timestamp underneath
+    this.timestamp.textContent = `Retrieved: ${new Date(data.timestamp).toLocaleString()}`;
   }
 }
 
