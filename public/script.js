@@ -14,6 +14,12 @@ class ModelDemo {
   }
 
   async fetchModel() {
+    // If model already loaded, copy to clipboard instead
+    if (this.currentModel) {
+      await this.copyToClipboard();
+      return;
+    }
+
     // Disable button
     this.button.disabled = true;
     this.button.classList.add('loading');
@@ -127,8 +133,44 @@ class ModelDemo {
     const textSpan = this.button.querySelector('.btn-text');
     textSpan.textContent = data.model;
 
+    // Store model for copying
+    this.currentModel = data.model;
+
+    // Re-enable button for click-to-copy
+    this.button.disabled = false;
+
     // Show timestamp underneath
     this.timestamp.textContent = `Retrieved: ${new Date(data.timestamp).toLocaleString()}`;
+  }
+
+  async copyToClipboard() {
+    if (!this.currentModel) return;
+
+    try {
+      await navigator.clipboard.writeText(this.currentModel);
+
+      // Show copied feedback
+      const textSpan = this.button.querySelector('.btn-text');
+      const originalText = textSpan.textContent;
+      textSpan.textContent = 'Copied! ✓';
+
+      // Reset after 2 seconds
+      setTimeout(() => {
+        textSpan.textContent = originalText;
+      }, 2000);
+
+    } catch (error) {
+      console.error('Failed to copy:', error);
+
+      // Fallback: Show error
+      const textSpan = this.button.querySelector('.btn-text');
+      const originalText = textSpan.textContent;
+      textSpan.textContent = 'Copy failed';
+
+      setTimeout(() => {
+        textSpan.textContent = originalText;
+      }, 2000);
+    }
   }
 }
 
