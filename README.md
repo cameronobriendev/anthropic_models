@@ -4,6 +4,12 @@
 
 A comprehensive dashboard for managing multiple Anthropic Claude models, running A/B tests, and monitoring AI performance across BrassHelm applications.
 
+## 🎯 Live Demo
+
+**[Try it now: anthropic.cameronobrien.dev](https://anthropic.cameronobrien.dev)**
+
+A simple demo page showcasing the core value: centralized Claude model configuration. Instead of hardcoding model versions in 10+ production apps, this API provides a single source of truth. Update the model once, deploy everywhere.
+
 ## Tech Stack
 
 - **TypeScript** - Type-safe development
