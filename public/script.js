@@ -1,6 +1,69 @@
 // Anthropic Models Manager - Demo Page
 // Simple demo showing current Claude model with liquid fill animation
 
+// Toast Configuration
+const TOAST_ICONS = {
+  success: `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+  </svg>`
+};
+
+const TOAST_TITLES = {
+  success: 'Success'
+};
+
+// Toast System
+function showToast(message, type = 'success', duration = 4000) {
+  const container = document.getElementById('toastContainer');
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `
+    ${TOAST_ICONS[type]}
+    <div class="toast-content">
+      <div class="toast-title">${TOAST_TITLES[type]}</div>
+      <div class="toast-message">${message}</div>
+    </div>
+    <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    <div class="toast-progress"></div>
+  `;
+
+  container.appendChild(toast);
+
+  // Hover-to-pause functionality
+  let timeoutId;
+  let startTime = Date.now();
+  let remainingTime = duration;
+  const progressBar = toast.querySelector('.toast-progress');
+
+  // Initial auto-dismiss timeout
+  timeoutId = setTimeout(() => {
+    toast.classList.add('hiding');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+
+  // Pause on hover
+  toast.addEventListener('mouseenter', () => {
+    clearTimeout(timeoutId);
+    remainingTime -= (Date.now() - startTime);
+    if (progressBar) {
+      progressBar.style.animationPlayState = 'paused';
+    }
+  });
+
+  // Resume on mouse leave
+  toast.addEventListener('mouseleave', () => {
+    startTime = Date.now();
+    timeoutId = setTimeout(() => {
+      toast.classList.add('hiding');
+      setTimeout(() => toast.remove(), 300);
+    }, remainingTime);
+    if (progressBar) {
+      progressBar.style.animationPlayState = 'running';
+    }
+  });
+}
+
 class ModelDemo {
   constructor() {
     this.button = document.getElementById('getModelBtn');
@@ -149,27 +212,14 @@ class ModelDemo {
     try {
       await navigator.clipboard.writeText(this.currentModel);
 
-      // Show copied feedback
-      const textSpan = this.button.querySelector('.btn-text');
-      const originalText = textSpan.textContent;
-      textSpan.textContent = 'Copied! ✓';
-
-      // Reset after 2 seconds
-      setTimeout(() => {
-        textSpan.textContent = originalText;
-      }, 2000);
+      // Show success toast
+      showToast('Model ID copied to clipboard!', 'success');
 
     } catch (error) {
       console.error('Failed to copy:', error);
 
-      // Fallback: Show error
-      const textSpan = this.button.querySelector('.btn-text');
-      const originalText = textSpan.textContent;
-      textSpan.textContent = 'Copy failed';
-
-      setTimeout(() => {
-        textSpan.textContent = originalText;
-      }, 2000);
+      // Show error message (fallback)
+      alert('Failed to copy to clipboard');
     }
   }
 }
