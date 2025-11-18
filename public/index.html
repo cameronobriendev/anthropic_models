@@ -26,7 +26,7 @@
           <h3>Why This Matters</h3>
           <p>
             Instead of hardcoding Claude model versions in 10+ production apps, this API provides a single source of truth.
-            When Anthropic releases a new model, update it once here and all apps instantly use the new version on next deployment.
+            Each app makes a live API call to fetch the current model. When Anthropic releases a new model, update it once here and all apps instantly use the new version on their next API call—no redeployment needed.
           </p>
 
           <div class="benefits">
@@ -35,8 +35,8 @@
               <span>Change model version in one place</span>
             </div>
             <div class="benefit">
-              <strong>Deploy Everywhere</strong>
-              <span>All 10+ apps get the update automatically</span>
+              <strong>Live Updates</strong>
+              <span>All 10+ apps get the new model instantly</span>
             </div>
             <div class="benefit">
               <strong>Version Control</strong>
