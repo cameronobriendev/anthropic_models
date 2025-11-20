@@ -8,6 +8,12 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Dynamic Navigation -->
+  <nav class="site-nav">
+    <a href="https://cameronobrien.dev" class="nav-btn" id="portfolioBtn">Back to Portfolio</a>
+    <a href="https://github.com/cameronobriendev" class="nav-btn" id="githubBtn">See my Github</a>
+  </nav>
+
   <div class="container">
     <header class="header">
       <h1 class="title">Anthropic Models Manager</h1>
@@ -67,5 +73,19 @@
   <div id="toastContainer"></div>
 
   <script src="script.js"></script>
+  <script>
+    // Dynamic nav text based on referrer
+    (function() {
+      const referrer = document.referrer.toLowerCase();
+      const portfolioBtn = document.getElementById('portfolioBtn');
+      const githubBtn = document.getElementById('githubBtn');
+
+      if (referrer.includes('github.com')) {
+        portfolioBtn.textContent = 'See my Portfolio';
+        githubBtn.textContent = 'Back to Github';
+      }
+      // Default (from portfolio or direct) keeps: "Back to Portfolio" / "See my Github"
+    })();
+  </script>
 </body>
 </html>
